@@ -1,20 +1,27 @@
 const std = @import("std");
 const ReSid = @import("resid");
 
+const Sid = ReSid.Sid;
 const SidFile = ReSid.SidFile;
 const SidPlayer = ReSid.SidPlayer;
+const DumpPlayer = ReSid.DumpPlayer;
+const WavWriter = ReSid.WavWriter;
 
 pub const CsvFormat = enum { hex, decimal };
+pub const WavFormat = enum { mono, stereo };
 
 pub const ParsedArgs = struct {
     sid_filename: []const u8,
     output_filename: []const u8,
-    max_frames: usize,
+    max_frames: u32,
     dbg_enabled: bool,
     csv_enabled: bool,
-    csv_format: CsvFormat, // 🔥 NEW: HEX OR DECIMAL!
-    wav_output: ?[]const u8,
+    csv_format: CsvFormat,
+    wav_format: WavFormat,
+    wav_output: bool,
 };
+
+const usage_string = "Usage: sidxport <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>] [--wav-mono] [--wav-stereo]\n";
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
@@ -23,7 +30,7 @@ pub fn main() !void {
     // parse commandline
     const args = try parseCommandLine(gpa);
 
-    std.debug.print("[EXE] loading Sid file '{s}'\n", .{args.sid_filename});
+    std.debug.print("[SidXPort] loading Sid file '{s}'\n", .{args.sid_filename});
     // allocate output dump
     const dump_size = args.max_frames * 25; // 25 registers per frame
     var sid_dump = try gpa.alloc(u8, dump_size);
@@ -33,15 +40,15 @@ pub fn main() !void {
     defer sid_file.deinit(gpa);
 
     // load .sid file
-    std.debug.print("[EXE] SID filename raw bytes: ", .{});
+    std.debug.print("[SidXPort] SID filename raw bytes: ", .{});
     for (args.sid_filename) |byte| {
         std.debug.print("{X:02} ", .{byte});
     }
     std.debug.print("\n", .{});
-    std.debug.print("[EXE] loading Sid file '{s}'\n", .{args.sid_filename});
-    try stdout.print("[EXE] loading Sid file '{s}'\n", .{args.sid_filename});
+    std.debug.print("[SidXPort] loading Sid file '{s}'\n", .{args.sid_filename});
+    try stdout.print("[SidXPort] loading Sid file '{s}'\n", .{args.sid_filename});
     if (sid_file.load(gpa, args.sid_filename)) {
-        std.debug.print("[EXE] Loaded SID file successfully!\n", .{});
+        std.debug.print("[SidXPort] Loaded SID file successfully!\n", .{});
     } else |err| {
         std.debug.print("[ERROR] Failed to load SID file: {}\n", .{err});
         return err;
@@ -57,7 +64,7 @@ pub fn main() !void {
     try player.sidInit(sid_file.header.start_song - 1);
 
     // loop call sid play, fill the dump
-    try stdout.print("[EXE] looping sid play()\n", .{});
+    try stdout.print("[SidXPort] looping sid play()\n", .{});
     for (0..args.max_frames) |frame| {
         try player.sidPlay();
         const sid_registers = player.c64.sid.getRegisters();
@@ -66,27 +73,78 @@ pub fn main() !void {
             hexDumpRegisters(frame, &sid_registers);
     }
 
-    if (args.csv_enabled) {
-        // convert to csv file, and save
-        try writeCsvDump(
-            args.output_filename,
-            sid_dump,
-            args.max_frames,
-            args.csv_format,
-        );
-    } else {
-
-        // write dump to output file
-        var file = try std.fs.cwd().createFile(args.output_filename, .{});
-        defer file.close();
-        try file.writeAll(sid_dump);
-        std.debug.print("[EXE] SID binary dump saved to {s}!\n", .{args.output_filename});
+    // generate output
+    if (args.wav_output == false) {
+        if (args.csv_enabled) {
+            // convert to csv file, and save
+            try writeCsvDump(
+                args.output_filename,
+                sid_dump,
+                args.max_frames,
+                args.csv_format,
+            );
+        } else {
+            // write raw dump to output file
+            var file = try std.fs.cwd().createFile(args.output_filename, .{});
+            defer file.close();
+            try file.writeAll(sid_dump);
+            std.debug.print(
+                "[SidXPort] SID binary dump saved to {s}!\n",
+                .{args.output_filename},
+            );
+        }
     }
 
     // convert to wave file, and save
-    if (args.wav_output) |filename| {
-        std.debug.print("[EXE] converting SID to WAV: {s}\n", .{filename});
-        // TODO: Implement WAV conversion logic here
+    if (args.wav_output) {
+        std.debug.print(
+            "[SidXPort] converting SID to WAV: {s}\n",
+            .{args.output_filename},
+        );
+        try exportWav(
+            gpa,
+            args.output_filename,
+            sid_dump,
+            args.max_frames,
+            args.wav_format,
+        );
+    }
+}
+
+fn exportWav(
+    allocator: std.mem.Allocator,
+    output_filename: ?[]const u8,
+    sid_dump: []u8,
+    max_frames: u32,
+    wav_format: WavFormat,
+) !void {
+    var stdout = std.io.getStdOut().writer();
+    var sid = try Sid.init("zigsid#1");
+    defer sid.deinit();
+    var player = try DumpPlayer.init(allocator, sid);
+    defer player.deinit();
+    player.setDmp(sid_dump);
+
+    const sampling_rate = 44100;
+    const audio_len_float: f32 = @as(f32, @floatFromInt(sid_dump.len)) /
+        25.0 / 50;
+    const audio_len: usize = @intFromFloat(audio_len_float);
+    try stdout.print("[SidXPort] Audio Length {d}s\n", .{audio_len});
+    const pcm_buffer = try allocator.alloc(i16, sampling_rate * audio_len);
+    defer allocator.free(pcm_buffer);
+
+    const steps_rendered = player.renderAudio(0, max_frames, pcm_buffer);
+    try stdout.print("[SidXPort] Steps rendered {d}\n", .{steps_rendered});
+
+    var mywav = WavWriter.init(
+        allocator,
+        output_filename orelse "sidxport-out.wav",
+    );
+    mywav.setMonoBuffer(pcm_buffer);
+    if (wav_format == .mono) {
+        try mywav.writeMono();
+    } else {
+        try mywav.writeStereo();
     }
 }
 
@@ -95,17 +153,18 @@ fn parseCommandLine(allocator: std.mem.Allocator) !ParsedArgs {
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 4) {
-        std.debug.print("Usage: sidxport <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>]\n", .{});
+        std.debug.print(usage_string, .{});
         return error.InvalidArguments;
     }
 
     var parsed = ParsedArgs{
         .sid_filename = try allocator.dupe(u8, args[1]),
         .output_filename = try allocator.dupe(u8, args[2]),
-        .max_frames = try std.fmt.parseInt(usize, args[3], 10),
+        .max_frames = try std.fmt.parseInt(u32, args[3], 10),
         .dbg_enabled = false,
         .csv_enabled = false,
-        .wav_output = null,
+        .wav_output = false,
+        .wav_format = .stereo,
         .csv_format = .decimal,
     };
 
@@ -119,17 +178,15 @@ fn parseCommandLine(allocator: std.mem.Allocator) !ParsedArgs {
         } else if (std.mem.eql(u8, args[i], "--csv-dec")) {
             parsed.csv_enabled = true;
             parsed.csv_format = .decimal;
-        } else if (std.mem.eql(u8, args[i], "--wav")) {
-            if (i + 1 >= args.len) {
-                std.debug.print("Error: --wav requires an output filename.\n", .{});
-                std.debug.print("Usage: sidxport <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>]\n", .{});
-                return error.InvalidArguments;
-            }
-            parsed.wav_output = args[i + 1]; // Store WAV filename
-            i += 1; // Skip next argument
+        } else if (std.mem.eql(u8, args[i], "--wav-mono")) {
+            parsed.wav_format = .mono;
+            parsed.wav_output = true;
+        } else if (std.mem.eql(u8, args[i], "--wav-stereo")) {
+            parsed.wav_format = .stereo;
+            parsed.wav_output = true;
         } else {
             std.debug.print("Error: Unknown option {s}\n", .{args[i]});
-            std.debug.print("Usage: sidxport <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>]\n", .{});
+            std.debug.print(usage_string, .{});
             return error.InvalidArguments;
         }
     }
@@ -168,5 +225,5 @@ fn writeCsvDump(output_filename: []const u8, sid_dump: []const u8, max_frames: u
         try file.writer().writeAll("\n");
     }
 
-    std.debug.print("[EXE] CSV dump saved to {s}!\n", .{output_filename});
+    std.debug.print("[SidXPort] CSV dump saved to {s}!\n", .{output_filename});
 }

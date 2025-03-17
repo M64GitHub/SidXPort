@@ -14,5 +14,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.root_module.addImport("resid", mod_resid);
+    exe.linkLibCpp(); // Needed for C++ linkage
+    // Use the dependency's installed header path
+    exe.addIncludePath(dep_resid.path("zig-out/include/resid-cpp"));
     b.installArtifact(exe);
 }
