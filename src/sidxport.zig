@@ -95,7 +95,7 @@ fn parseCommandLine(allocator: std.mem.Allocator) !ParsedArgs {
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 4) {
-        std.debug.print("Usage: sid-dump <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>]\n", .{});
+        std.debug.print("Usage: sidxport <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>]\n", .{});
         return error.InvalidArguments;
     }
 
@@ -122,14 +122,14 @@ fn parseCommandLine(allocator: std.mem.Allocator) !ParsedArgs {
         } else if (std.mem.eql(u8, args[i], "--wav")) {
             if (i + 1 >= args.len) {
                 std.debug.print("Error: --wav requires an output filename.\n", .{});
-                std.debug.print("Usage: sid-dump <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>]\n", .{});
+                std.debug.print("Usage: sidxport <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>]\n", .{});
                 return error.InvalidArguments;
             }
             parsed.wav_output = args[i + 1]; // Store WAV filename
             i += 1; // Skip next argument
         } else {
             std.debug.print("Error: Unknown option {s}\n", .{args[i]});
-            std.debug.print("Usage: sid-dump <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>]\n", .{});
+            std.debug.print("Usage: sidxport <SID file> <output dump> <frames> [--debug] [--csv-dec] [--csv-hex] [--wav <wavfile>]\n", .{});
             return error.InvalidArguments;
         }
     }

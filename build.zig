@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) void {
     const mod_resid = dep_resid.module("resid");
 
     const exe = b.addExecutable(.{
-        .name = "zid-dump",
+        .name = "sidxport",
         .root_source_file = b.path("src/sidxport.zig"),
         .target = target,
         .optimize = optimize,
