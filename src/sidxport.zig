@@ -30,7 +30,6 @@ pub fn main() !void {
     // parse commandline
     const args = try parseCommandLine(gpa);
 
-    std.debug.print("[SidXPort] loading Sid file '{s}'\n", .{args.sid_filename});
     // allocate output dump
     const dump_size = args.max_frames * 25; // 25 registers per frame
     var sid_dump = try gpa.alloc(u8, dump_size);
@@ -40,12 +39,6 @@ pub fn main() !void {
     defer sid_file.deinit(gpa);
 
     // load .sid file
-    std.debug.print("[SidXPort] SID filename raw bytes: ", .{});
-    for (args.sid_filename) |byte| {
-        std.debug.print("{X:02} ", .{byte});
-    }
-    std.debug.print("\n", .{});
-    std.debug.print("[SidXPort] loading Sid file '{s}'\n", .{args.sid_filename});
     try stdout.print("[SidXPort] loading Sid file '{s}'\n", .{args.sid_filename});
     if (sid_file.load(gpa, args.sid_filename)) {
         std.debug.print("[SidXPort] Loaded SID file successfully!\n", .{});
@@ -61,9 +54,14 @@ pub fn main() !void {
     var player = try SidPlayer.init(gpa, sid_file);
 
     // call sid init
+    // player.c64.dbg_enabled = true;
+    // player.c64.cpu_dbg_enabled = true;
+    try stdout.print("[SidXPort] calling sid init()\n", .{});
     try player.sidInit(sid_file.header.start_song - 1);
 
-    // loop call sid play, fill the dump
+    // -- loop call sid play, fill the dump
+
+    // player.c64.sid_dbg_enabled = true;
     try stdout.print("[SidXPort] looping sid play()\n", .{});
     for (0..args.max_frames) |frame| {
         try player.sidPlay();
@@ -72,6 +70,8 @@ pub fn main() !void {
         if (args.dbg_enabled)
             hexDumpRegisters(frame, &sid_registers);
     }
+
+    // --
 
     // generate output
     if (args.wav_output == false) {
@@ -121,6 +121,8 @@ fn exportWav(
     var stdout = std.io.getStdOut().writer();
     var sid = try Sid.init("zigsid#1");
     defer sid.deinit();
+
+    _ = sid.setChipModel("MOS8580");
     var player = try DumpPlayer.init(allocator, sid);
     defer player.deinit();
     player.setDmp(sid_dump);
