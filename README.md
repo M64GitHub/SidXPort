@@ -1,5 +1,5 @@
 ```bash
-❯ zig-out/bin/sidxport ../zigreSID/data/Cybernoid_II.sid cybernoid.wav 10000 --wav-stereo 
+❯ zig-out/bin/sidxport Cybernoid_II.sid cybernoid.wav 10000 --wav-stereo 
 [SidXPort] loading Sid file '../zigreSID/data/Cybernoid_II.sid'
 [SidXPort] Loaded SID file successfully!
 [sidfile] Loaded Sid tune: Cybernoid II
