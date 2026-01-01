@@ -4,8 +4,8 @@
     .fingerprint = 0xa0000bba4fc08108,
     .dependencies = .{
         .resid = .{
-            .url = "https://github.com/M64GitHub/zigreSID/archive/refs/tags/v0.3.0-alpha.tar.gz",
-            .hash = "resid-0.3.0-LzaBAicpCwCZOvwy9uqL9jmRhFDincjJKCkT5CSjMF0H",
+            .url = "https://github.com/M64GitHub/zigreSID/archive/refs/tags/v0.5.0.tar.gz",
+            .hash = "resid-0.5.0-CVhkLsp0CwDSJejbTOub4ir4sj1q4-yMLAr_7TcALvZV",
         },
     },
     .paths = .{
